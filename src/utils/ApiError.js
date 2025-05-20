@@ -3,7 +3,7 @@ class ApiError extends Error {
     statusCode,
     message = "Something Went Wrong",
     errors = [],
-    statusCode = "UNKNOWN_ERROR",
+    errorCode = "UNKNOWN_ERROR",
     stack = ""
   ) {
     this.statusCode = statusCode;
