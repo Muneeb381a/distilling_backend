@@ -68,4 +68,4 @@ const errorHandler = async (err, req, res, next) => {
   });
 };
 
-export default errorHandler;
+export default logger;

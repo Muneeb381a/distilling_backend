@@ -1,44 +1,60 @@
 import pkg from "pg";
 import dotenv from "dotenv";
-import { cleanEnv, str, port } from "envalid";
-import winston from "winston";
+import { cleanEnv, str, port, url } from "envalid";
+import logger from "../utils/logger.js";
 
 dotenv.config();
 
 const { Pool } = pkg;
 
-// Logger setup for database errors
-const logger = winston.createLogger({
-  level: "error",
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: "error.log" }),
-    new winston.transports.Console(),
-  ],
-});
-
 // Validate environment variables
 const env = cleanEnv(process.env, {
-  DB_USER: str({ desc: "PostgreSQL username" }),
-  DB_HOST: str({ desc: "PostgreSQL host" }),
-  DB_DATABASE: str({ desc: "PostgreSQL database name" }),
-  DB_PASSWORD: str({ desc: "PostgreSQL password" }),
-  DB_PORT: port({ desc: "PostgreSQL port", default: 5432 }),
+  DATABASE_URL: url({
+    desc: "PostgreSQL connection URL",
+    default: undefined,
+  }),
+  DB_USER: str({
+    desc: "PostgreSQL username",
+    default: undefined,
+  }),
+  DB_HOST: str({
+    desc: "PostgreSQL host",
+    default: undefined,
+  }),
+  DB_DATABASE: str({
+    desc: "PostgreSQL database name",
+    default: undefined,
+  }),
+  DB_PASSWORD: str({
+    desc: "PostgreSQL password",
+    default: undefined,
+  }),
+  DB_PORT: port({
+    desc: "PostgreSQL port",
+    default: 5432,
+  }),
 });
 
 // PostgreSQL connection pool
+const poolConfig = env.DATABASE_URL
+  ? {
+      connectionString: env.DATABASE_URL,
+      ssl:
+        env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+    }
+  : {
+      user: env.DB_USER,
+      host: env.DB_HOST,
+      database: env.DB_DATABASE,
+      password: env.DB_PASSWORD,
+      port: env.DB_PORT,
+    };
+
 const pool = new Pool({
-  user: env.DB_USER,
-  host: env.DB_HOST,
-  database: env.DB_DATABASE,
-  password: env.DB_PASSWORD,
-  port: env.DB_PORT,
-  max: 20, // Maximum number of clients in the pool
-  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 2000, // Timeout after 2 seconds if connection fails
+  ...poolConfig,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
 });
 
 // Handle pool errors
@@ -48,18 +64,33 @@ pool.on("error", (err, client) => {
     error: err.message,
     stack: err.stack,
   });
-  // Optionally, attempt to reconnect or notify admins
+  // Attempt to reconnect
+  setTimeout(() => initializePool(), 5000);
 });
 
-// Test connection on startup
-async function initializePool() {
+// Initialize connection and create tables
+const connectDB = async () => {
   let retries = 5;
   while (retries > 0) {
     try {
       const client = await pool.connect();
       logger.info("Successfully connected to PostgreSQL");
+
+      // Create users table
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          username VARCHAR(30) UNIQUE NOT NULL,
+          password VARCHAR(255) NOT NULL,
+          role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'supervisor')),
+          name VARCHAR(50),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+      logger.info("Users table initialized");
+
       client.release();
-      break;
+      return;
     } catch (err) {
       logger.error({
         message: "Failed to connect to PostgreSQL",
@@ -69,22 +100,12 @@ async function initializePool() {
       retries -= 1;
       if (retries === 0) {
         logger.error("Exhausted retries. Shutting down.");
-        process.exit(1);
+        throw new Error("Database connection failed");
       }
-      // Wait 5 seconds before retrying
       await new Promise((resolve) => setTimeout(resolve, 5000));
     }
   }
-}
-
-// Initialize pool
-initializePool().catch((err) => {
-  logger.error({
-    message: "Failed to initialize database pool",
-    error: err.message,
-  });
-  process.exit(1);
-});
+};
 
 // Graceful shutdown
 process.on("SIGTERM", async () => {
@@ -94,4 +115,4 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
-export default pool;
+export { pool, connectDB };

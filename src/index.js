@@ -1,7 +1,7 @@
 import { cleanEnv, str, port } from 'envalid';
 import winston from 'winston';
 import app from './app.js';
-import pool from './config/db.js';
+import {pool} from './config/db.js';
 
 // Logger setup for startup/shutdown
 const logger = winston.createLogger({

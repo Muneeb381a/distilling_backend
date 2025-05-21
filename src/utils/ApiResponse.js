@@ -3,15 +3,15 @@ class ApiResponse {
         this.res = res;
         this.statusCode = statusCode;
         this.message = message;
-        this.data = data
+        this.data = data;
     }
 
     send() {
         return this.res.status(this.statusCode).json({
             success: true,
             message: this.message,
-            data: this.data
-        })
+            data: this.data,
+        });
     }
 }
 
