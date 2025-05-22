@@ -11,6 +11,8 @@ import {ApiError} from "./utils/ApiError.js";
 // Load environment variables first
 dotenv.config();
 
+
+
 // Validate environment variables
 const env = cleanEnv(process.env, {
   NODE_ENV: str({
@@ -18,12 +20,14 @@ const env = cleanEnv(process.env, {
     default: "development",
   }),
   FRONTEND_URL: str({
-    default: "http://localhost:5174",
+    default: "http://localhost:5173",
     desc: "Frontend URL for CORS",
   }),
 });
 
 const app = express();
+
+app.use(cors())
 
 // Middleware
 app.use(
